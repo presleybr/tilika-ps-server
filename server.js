@@ -113,9 +113,16 @@ app.post('/render', async (req, res) => {
     await runScript(`cscript //NoLogo "${CONFIG.VBS_SCRIPT}"`);
     console.log('[PS Server] Photoshop executou o script');
 
-    // 5. Ler JPG exportado e retornar em base64
+    // 5. Ler PNG exportado e retornar em base64
     if (!fs.existsSync(outputPath)) {
-      throw new Error('Photoshop não gerou o arquivo de saída: ' + outputPath);
+      // Ler log de erro do PS se existir
+      const errLog = CONFIG.TEMP_DIR + '\\error.log';
+      let psError = '';
+      if (fs.existsSync(errLog)) {
+        psError = fs.readFileSync(errLog, 'utf8');
+        fs.unlinkSync(errLog);
+      }
+      throw new Error('Photoshop não gerou o arquivo. ' + (psError || 'Verifique o log do PS.'));
     }
 
     const jpgBuffer = fs.readFileSync(outputPath);
