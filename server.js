@@ -96,6 +96,9 @@ function buildJSX({ titulo, gancho, cta, photoPath, outputPath }) {
 // Script gerado automaticamente — Tilika PS Server
 #target photoshop
 
+// Suprimir TODOS os dialogos — roda silencioso
+app.displayDialogs = DialogModes.NO;
+
 try {
   // ── Abrir PSD ──────────────────────────────────────────
   var psdFile = new File("${psdPath}");
@@ -121,10 +124,12 @@ try {
   // ── Fechar sem salvar ──────────────────────────────────
   doc.close(SaveOptions.DONOTSAVECHANGES);
 
-  alert("OK: Arte exportada");
-
 } catch (e) {
-  alert("ERRO: " + e.message);
+  // Sem alert — logar no console do servidor
+  var logFile = new File("C:/tilika-ps-server/temp/error.log");
+  logFile.open("w");
+  logFile.write("ERRO: " + e.message);
+  logFile.close();
 }
 
 // ── Funções auxiliares ─────────────────────────────────────
