@@ -16,6 +16,8 @@ const app  = express();
 app.use(express.json({ limit: '10mb' }));
 
 // ── CONFIG — ajuste se necessário ──────────────────────────
+const DEPLOY_TOKEN = process.env.DEPLOY_TOKEN || 'tilika-secret-2025';
+
 const CONFIG = {
   PSD_PATH:    'C:\\Users\\' + os.userInfo().username + '\\Documents\\lilika\\Arte_Feed.psd',
   OUTPUT_DIR:  'C:\\tilika-ps-server\\output',
@@ -106,8 +108,17 @@ app.get('/errorlog', (req, res) => {
   }
 });
 
+// ── MIDDLEWARE DE AUTENTICACAO ──────────────────────────────
+function requireToken(req, res, next) {
+  const token = req.headers['x-deploy-token'] || req.query.token;
+  if (token !== DEPLOY_TOKEN) {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+  next();
+}
+
 // ── AUTO DEPLOY: git pull + reinicia o processo ────────────
-app.post('/deploy', (req, res) => {
+app.post('/deploy', requireToken, (req, res) => {
   console.log('[Deploy] Recebido pedido de deploy do Mac...');
   res.json({ ok: true, msg: 'Pulling e reiniciando...' });
 
@@ -126,6 +137,16 @@ app.post('/deploy', (req, res) => {
       setTimeout(() => process.exit(0), 500);
     });
   }, 500);
+});
+
+// ── EXEC: rodar qualquer comando no Windows ─────────────────
+app.post('/exec', requireToken, (req, res) => {
+  const { cmd } = req.body;
+  if (!cmd) return res.status(400).json({ error: 'cmd obrigatório' });
+  console.log('[Exec]', cmd);
+  exec(cmd, { timeout: 30000, shell: 'powershell.exe' }, (err, stdout, stderr) => {
+    res.json({ stdout: stdout || '', stderr: stderr || '', code: err?.code || 0 });
+  });
 });
 
 // ── RENDER ─────────────────────────────────────────────────
