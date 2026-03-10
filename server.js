@@ -160,65 +160,20 @@ try {
   var doc = app.open(new File("${psdPath}"));
   app.activeDocument = doc;
 
-  // ── 2. Esconder camada-final ───────────────────────────
-  var camadaFinal = findLayer(doc, "camada-final");
-  if (camadaFinal) camadaFinal.visible = false;
-
-  // ── 3. Editar textos ───────────────────────────────────
+  // ── 2. Editar textos ───────────────────────────────────
   editTextLayer(doc, "titulo", "${esc(titulo)}");
   editTextLayer(doc, "gancho", "${esc(gancho)}");
   editTextLayer(doc, "cta",    "${esc(cta)}");
 
-  // ── 4. Substituir foto ────────────────────────────────
+  // ── 3. Substituir foto ────────────────────────────────
   replaceFoto(doc, "${photoFwd}");
 
-  // ── 5. Stamp Visible → nova camada com tudo achatado ──
-  // Seleciona a camada mais acima e faz Stamp Visible
-  doc.activeLayer = doc.layers[0];
-  var idMrgV = charIDToTypeID("MrgV");
-  var mergeDesc = new ActionDescriptor();
-  mergeDesc.putBoolean(charIDToTypeID("Dupl"), true);
-  executeAction(idMrgV, mergeDesc, DialogModes.NO);
-  var stampedLayer = doc.activeLayer;
+  // ── 4. Garantir que camada-final esta visivel ─────────
+  // O Camera Raw do smart object aplica automaticamente na exportacao
+  var camadaFinal = findLayer(doc, "camada-final");
+  if (camadaFinal) camadaFinal.visible = true;
 
-  // ── 6. Selecionar tudo e recortar ─────────────────────
-  doc.selection.selectAll();
-  doc.activeLayer = stampedLayer;
-  executeAction(charIDToTypeID("cut "), undefined, DialogModes.NO);
-
-  // Remover a camada stamp (ficou vazia apos o corte)
-  try { stampedLayer.remove(); } catch(e) {}
-
-  // ── 7. Abrir objeto inteligente camada-final ──────────
-  if (camadaFinal) {
-    camadaFinal.visible = true;
-    doc.activeLayer = camadaFinal;
-    executeAction(stringIDToTypeID("placedLayerEditContents"), new ActionDescriptor(), DialogModes.NO);
-
-    // Agora estamos dentro do smart object
-    var soDoc = app.activeDocument;
-
-    // Limpar conteudo existente e colar a arte
-    try {
-      soDoc.selection.selectAll();
-      executeAction(charIDToTypeID("Dlt "), undefined, DialogModes.NO);
-    } catch(e) {}
-
-    // Colar a arte recortada
-    var pasteDesc = new ActionDescriptor();
-    pasteDesc.putEnumerated(
-      stringIDToTypeID("antiAlias"),
-      stringIDToTypeID("antiAlias"),
-      stringIDToTypeID("antiAliasNone")
-    );
-    executeAction(charIDToTypeID("past"), pasteDesc, DialogModes.NO);
-
-    // Achatar e salvar o smart object
-    soDoc.flatten();
-    soDoc.close(SaveOptions.SAVECHANGES);
-  }
-
-  // ── 8. Exportar como PNG ──────────────────────────────
+  // ── 5. Exportar como PNG ──────────────────────────────
   var outFile    = new File("${outputPng}");
   var pngOptions = new PNGSaveOptions();
   pngOptions.compression = 3;
