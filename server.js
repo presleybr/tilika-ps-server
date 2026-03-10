@@ -174,16 +174,35 @@ function replaceFoto(doc, photoPath) {
 }
 
 function findLayer(container, name) {
-  var layers = container.artLayers;
-  for (var i = 0; i < layers.length; i++) {
-    if (layers[i].name === name) return layers[i];
-  }
-  // Procurar em grupos
-  var groups = container.layerSets;
-  for (var g = 0; g < groups.length; g++) {
-    var found = findLayer(groups[g], name);
-    if (found) return found;
-  }
+  // Buscar em artLayers diretos
+  try {
+    var layers = container.artLayers;
+    for (var i = 0; i < layers.length; i++) {
+      if (layers[i].name === name) return layers[i];
+    }
+  } catch(e) {}
+  // Buscar recursivamente em todos os grupos/layerSets
+  try {
+    var groups = container.layerSets;
+    for (var g = 0; g < groups.length; g++) {
+      // Checar o proprio grupo
+      if (groups[g].name === name) return groups[g];
+      // Buscar dentro do grupo
+      var found = findLayer(groups[g], name);
+      if (found) return found;
+    }
+  } catch(e) {}
+  // Buscar em layers (mistura artLayers + layerSets)
+  try {
+    var allLayers = container.layers;
+    for (var l = 0; l < allLayers.length; l++) {
+      if (allLayers[l].name === name) return allLayers[l];
+      if (allLayers[l].layers) {
+        var found2 = findLayer(allLayers[l], name);
+        if (found2) return found2;
+      }
+    }
+  } catch(e) {}
   return null;
 }
 `;
