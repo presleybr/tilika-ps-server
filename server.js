@@ -225,8 +225,20 @@ function editTextLayer(doc, name, content) {
   if (!content) return;
   try {
     var layer = findLayer(doc, name);
-    if (layer && layer.kind === LayerKind.TEXT) {
-      layer.textItem.contents = content;
+    if (layer) {
+      try {
+        layer.textItem.contents = content;
+      } catch(e) {
+        var logF = new File("C:/tilika-ps-server/temp/error.log");
+        logF.open("w");
+        logF.write("editTextLayer ERRO em '" + name + "': " + e.message + " kind=" + layer.kind);
+        logF.close();
+      }
+    } else {
+      var logF2 = new File("C:/tilika-ps-server/temp/error.log");
+      logF2.open("w");
+      logF2.write("editTextLayer: camada '" + name + "' NAO ENCONTRADA");
+      logF2.close();
     }
   } catch(e) {}
 }
