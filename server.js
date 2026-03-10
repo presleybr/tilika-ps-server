@@ -98,8 +98,8 @@ app.post('/render', async (req, res) => {
     await downloadFile(photoUrl, photoPath);
     console.log('[PS Server] Foto baixada:', photoPath);
 
-    // 2. Caminho do JPG de saída
-    const outputPath = path.join(CONFIG.OUTPUT_DIR, `art_${Date.now()}.jpg`);
+    // 2. Caminho do PNG de saída
+    const outputPath = path.join(CONFIG.OUTPUT_DIR, `art_${Date.now()}.png`);
 
     // 3. Gerar script ExtendScript
     const jsx = buildJSX({ titulo, gancho, cta, photoPath, outputPath });
@@ -136,55 +136,99 @@ app.post('/render', async (req, res) => {
 
 // ── GERAR EXTENDSCRIPT JSX ──────────────────────────────────
 function buildJSX({ titulo, gancho, cta, photoPath, outputPath }) {
-  // Escapar strings pra JavaScript
   const esc = (s) => (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 
-  // Normalizar caminhos pra forward slash (PS prefere assim)
-  const psdPath    = CONFIG.PSD_PATH.replace(/\\/g, '/');
-  const photoFwd   = photoPath.replace(/\\/g, '/');
-  const outputFwd  = outputPath.replace(/\\/g, '/');
+  const psdPath   = CONFIG.PSD_PATH.replace(/\\/g, '/');
+  const photoFwd  = photoPath.replace(/\\/g, '/');
+  // Saída como PNG
+  const outputPng = outputPath.replace(/\\/g, '/').replace(/\.jpg$/i, '.png');
 
   return `
-// Script gerado automaticamente — Tilika PS Server
 #target photoshop
-
-// Suprimir TODOS os dialogos — roda silencioso
 app.displayDialogs = DialogModes.NO;
 
 try {
-  // ── Abrir PSD ──────────────────────────────────────────
-  var psdFile = new File("${psdPath}");
-  if (!psdFile.exists) { throw new Error("PSD nao encontrado: ${psdPath}"); }
 
-  var doc = app.open(psdFile);
+  // ── 1. Abrir PSD ───────────────────────────────────────
+  var doc = app.open(new File("${psdPath}"));
   app.activeDocument = doc;
 
-  // ── Editar camadas de texto ────────────────────────────
-  editTextLayer(doc, "titulo",  "${esc(titulo)}");
-  editTextLayer(doc, "gancho",  "${esc(gancho)}");
-  editTextLayer(doc, "cta",     "${esc(cta)}");
+  // ── 2. Esconder camada-final ───────────────────────────
+  var camadaFinal = findLayer(doc, "camada-final");
+  if (camadaFinal) camadaFinal.visible = false;
 
-  // ── Substituir foto ────────────────────────────────────
+  // ── 3. Editar textos ───────────────────────────────────
+  editTextLayer(doc, "titulo", "${esc(titulo)}");
+  editTextLayer(doc, "gancho", "${esc(gancho)}");
+  editTextLayer(doc, "cta",    "${esc(cta)}");
+
+  // ── 4. Substituir foto ────────────────────────────────
   replaceFoto(doc, "${photoFwd}");
 
-  // ── Exportar como JPG ──────────────────────────────────
-  var outFile = new File("${outputFwd}");
-  var opts    = new JPEGSaveOptions();
-  opts.quality = 12; // máximo
-  doc.saveAs(outFile, opts, true, Extension.LOWERCASE);
+  // ── 5. Stamp Visible → nova camada com tudo achatado ──
+  // Seleciona a camada mais acima e faz Stamp Visible
+  doc.activeLayer = doc.layers[0];
+  var idMrgV = charIDToTypeID("MrgV");
+  var mergeDesc = new ActionDescriptor();
+  mergeDesc.putBoolean(charIDToTypeID("Dupl"), true);
+  executeAction(idMrgV, mergeDesc, DialogModes.NO);
+  var stampedLayer = doc.activeLayer;
 
-  // ── Fechar sem salvar ──────────────────────────────────
+  // ── 6. Selecionar tudo e recortar ─────────────────────
+  doc.selection.selectAll();
+  doc.activeLayer = stampedLayer;
+  executeAction(charIDToTypeID("cut "), undefined, DialogModes.NO);
+
+  // Remover a camada stamp (ficou vazia apos o corte)
+  try { stampedLayer.remove(); } catch(e) {}
+
+  // ── 7. Abrir objeto inteligente camada-final ──────────
+  if (camadaFinal) {
+    camadaFinal.visible = true;
+    doc.activeLayer = camadaFinal;
+    executeAction(stringIDToTypeID("placedLayerEditContents"), new ActionDescriptor(), DialogModes.NO);
+
+    // Agora estamos dentro do smart object
+    var soDoc = app.activeDocument;
+
+    // Limpar conteudo existente e colar a arte
+    try {
+      soDoc.selection.selectAll();
+      executeAction(charIDToTypeID("Dlt "), undefined, DialogModes.NO);
+    } catch(e) {}
+
+    // Colar a arte recortada
+    var pasteDesc = new ActionDescriptor();
+    pasteDesc.putEnumerated(
+      stringIDToTypeID("antiAlias"),
+      stringIDToTypeID("antiAlias"),
+      stringIDToTypeID("antiAliasNone")
+    );
+    executeAction(charIDToTypeID("past"), pasteDesc, DialogModes.NO);
+
+    // Achatar e salvar o smart object
+    soDoc.flatten();
+    soDoc.close(SaveOptions.SAVECHANGES);
+  }
+
+  // ── 8. Exportar como PNG ──────────────────────────────
+  var outFile    = new File("${outputPng}");
+  var pngOptions = new PNGSaveOptions();
+  pngOptions.compression = 3;
+  pngOptions.interlaced  = false;
+  doc.saveAs(outFile, pngOptions, true, Extension.LOWERCASE);
+
+  // ── 9. Fechar sem salvar ──────────────────────────────
   doc.close(SaveOptions.DONOTSAVECHANGES);
 
 } catch (e) {
-  // Sem alert — logar no console do servidor
   var logFile = new File("C:/tilika-ps-server/temp/error.log");
   logFile.open("w");
-  logFile.write("ERRO: " + e.message);
+  logFile.write("ERRO: " + e.message + "\\nLine: " + e.line);
   logFile.close();
 }
 
-// ── Funções auxiliares ─────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────
 
 function editTextLayer(doc, name, content) {
   if (!content) return;
@@ -193,66 +237,37 @@ function editTextLayer(doc, name, content) {
     if (layer && layer.kind === LayerKind.TEXT) {
       layer.textItem.contents = content;
     }
-  } catch (e) {
-    // Camada nao encontrada — ignora
-  }
+  } catch(e) {}
 }
 
 function replaceFoto(doc, photoPath) {
   try {
     var layer = findLayer(doc, "foto");
     if (!layer) return;
-
     doc.activeLayer = layer;
-
-    // Tentar substituir conteudo do smart object
-    try {
-      var desc = new ActionDescriptor();
-      desc.putPath(charIDToTypeID("null"), new File(photoPath));
-      executeAction(stringIDToTypeID("placedLayerReplaceContents"), desc, DialogModes.NO);
-      return;
-    } catch (e) {}
-
-    // Fallback: abrir e fazer place manual
+    // Substituir conteudo do smart object
+    var desc = new ActionDescriptor();
+    desc.putPath(charIDToTypeID("null"), new File(photoPath));
+    executeAction(stringIDToTypeID("placedLayerReplaceContents"), desc, DialogModes.NO);
+  } catch(e) {
     try {
       var photoFile = new File(photoPath);
-      var placed = doc.place(photoFile);
-      placed.name = "foto_nova";
-    } catch (e2) {}
-
-  } catch (e) {
-    // Se nao conseguir substituir a foto, continua sem ela
+      doc.place(photoFile);
+    } catch(e2) {}
   }
 }
 
 function findLayer(container, name) {
-  // Buscar em artLayers diretos
   try {
-    var layers = container.artLayers;
-    for (var i = 0; i < layers.length; i++) {
-      if (layers[i].name === name) return layers[i];
-    }
-  } catch(e) {}
-  // Buscar recursivamente em todos os grupos/layerSets
-  try {
-    var groups = container.layerSets;
-    for (var g = 0; g < groups.length; g++) {
-      // Checar o proprio grupo
-      if (groups[g].name === name) return groups[g];
-      // Buscar dentro do grupo
-      var found = findLayer(groups[g], name);
-      if (found) return found;
-    }
-  } catch(e) {}
-  // Buscar em layers (mistura artLayers + layerSets)
-  try {
-    var allLayers = container.layers;
-    for (var l = 0; l < allLayers.length; l++) {
-      if (allLayers[l].name === name) return allLayers[l];
-      if (allLayers[l].layers) {
-        var found2 = findLayer(allLayers[l], name);
-        if (found2) return found2;
-      }
+    var all = container.layers;
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].name === name) return all[i];
+      try {
+        if (all[i].layers && all[i].layers.length > 0) {
+          var found = findLayer(all[i], name);
+          if (found) return found;
+        }
+      } catch(e) {}
     }
   } catch(e) {}
   return null;
