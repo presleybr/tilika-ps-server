@@ -96,6 +96,16 @@ app.get('/layerdebug', (req, res) => {
   }
 });
 
+// ── LER LOG DE ERRO DO PHOTOSHOP ───────────────────────────
+app.get('/errorlog', (req, res) => {
+  const f = CONFIG.TEMP_DIR + '\\error.log';
+  if (fs.existsSync(f)) {
+    res.send(fs.readFileSync(f, 'utf8'));
+  } else {
+    res.send('Sem erros registrados');
+  }
+});
+
 // ── RENDER ─────────────────────────────────────────────────
 app.post('/render', async (req, res) => {
   const { titulo, gancho, cta, pilar, photoUrl } = req.body;
@@ -164,6 +174,9 @@ function buildJSX({ titulo, gancho, cta, photoPath, outputPath }) {
 #target photoshop
 app.displayDialogs = DialogModes.NO;
 
+// Limpar log anterior
+try { var _cl = new File("C:/tilika-ps-server/temp/error.log"); _cl.open("w"); _cl.close(); } catch(e) {}
+
 try {
 
   // ── 1. Abrir PSD ───────────────────────────────────────
@@ -214,12 +227,21 @@ try {
 
 } catch (e) {
   var logFile = new File("C:/tilika-ps-server/temp/error.log");
-  logFile.open("w");
-  logFile.write("ERRO: " + e.message + "\\nLine: " + e.line);
+  logFile.open("a");
+  logFile.write("ERRO GLOBAL: " + e.message + "\\nLine: " + e.line);
   logFile.close();
 }
 
 // ── Helpers ────────────────────────────────────────────────
+
+function appendLog(msg) {
+  try {
+    var logF = new File("C:/tilika-ps-server/temp/error.log");
+    logF.open("a");
+    logF.write(msg + "\\n");
+    logF.close();
+  } catch(e) {}
+}
 
 function editTextLayer(doc, name, content) {
   if (!content) return;
@@ -227,20 +249,19 @@ function editTextLayer(doc, name, content) {
     var layer = findLayer(doc, name);
     if (layer) {
       try {
+        app.activeDocument = doc;
+        doc.activeLayer = layer;
         layer.textItem.contents = content;
+        appendLog("OK: '" + name + "' atualizado para: " + content.substring(0, 30));
       } catch(e) {
-        var logF = new File("C:/tilika-ps-server/temp/error.log");
-        logF.open("w");
-        logF.write("editTextLayer ERRO em '" + name + "': " + e.message + " kind=" + layer.kind);
-        logF.close();
+        appendLog("ERRO em '" + name + "': " + e.message + " | kind=" + layer.kind + " | número=" + e.number);
       }
     } else {
-      var logF2 = new File("C:/tilika-ps-server/temp/error.log");
-      logF2.open("w");
-      logF2.write("editTextLayer: camada '" + name + "' NAO ENCONTRADA");
-      logF2.close();
+      appendLog("NAO ENCONTRADA: '" + name + "'");
     }
-  } catch(e) {}
+  } catch(e) {
+    appendLog("EXCECAO em editTextLayer('" + name + "'): " + e.message);
+  }
 }
 
 function replaceFoto(doc, photoPath) {
