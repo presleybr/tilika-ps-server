@@ -258,9 +258,11 @@ try {
   editTextLayer(doc, "titulo", "${esc(titulo)}");
   editTextLayer(doc, "gancho", "${esc(gancho)}");
   editTextLayer(doc, "cta",    "${esc(cta)}");
+  app.refresh(); // forcar re-render das camadas de texto
 
   // ── 5. Substituir foto ────────────────────────────────
   replaceFoto(doc, "${photoFwd}");
+  app.refresh(); // forcar re-render da foto
 
   // ── 6. Stamp visible → salvar como PNG temp ──────────
   app.activeDocument = doc;
