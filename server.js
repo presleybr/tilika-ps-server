@@ -302,6 +302,31 @@ function editTextLayer(doc, name, content) {
         app.activeDocument = doc;
         doc.activeLayer = layer;
         layer.textItem.contents = content;
+
+        // Auto-shrink: se texto de paragrafo transbordar, reduz fonte ate caber
+        if (layer.textItem.kind === TextType.PARAGRAPHTEXT) {
+          var minSize = 8;
+          var originalSize = layer.textItem.size;
+          var currentSize = originalSize;
+          while (currentSize > minSize) {
+            try {
+              // Verificar overflow usando o bounding box vs bounds reais
+              var tBounds = layer.bounds;
+              var tBox    = layer.textItem.boundingBox;
+              // Se altura do texto ultrapassar a caixa, reduz
+              if ((tBounds[3].value - tBounds[1].value) > (tBox[3].value - tBox[1].value) + 2) {
+                currentSize -= 1;
+                layer.textItem.size = new UnitValue(currentSize, "pt");
+              } else {
+                break;
+              }
+            } catch(se) { break; }
+          }
+          if (currentSize !== originalSize) {
+            appendLog("Auto-shrink '" + name + "': " + originalSize + "pt -> " + currentSize + "pt");
+          }
+        }
+
         appendLog("OK: '" + name + "' atualizado para: " + content.substring(0, 30));
       } catch(e) {
         appendLog("ERRO em '" + name + "': " + e.message + " | kind=" + layer.kind + " | número=" + e.number);
