@@ -202,27 +202,78 @@ try {
   dbgFile.write(layerNames.join("\\n"));
   dbgFile.close();
 
-  // ── 3. Editar textos ───────────────────────────────────
+  // ── 3. Ocultar camada-final para revelar camadas editaveis ──
+  var camadaFinal = findLayer(doc, "camada-final");
+  if (camadaFinal) {
+    camadaFinal.visible = false;
+    appendLog("camada-final ocultada");
+  } else {
+    appendLog("camada-final NAO encontrada");
+  }
+
+  // ── 4. Editar textos ───────────────────────────────────
   editTextLayer(doc, "titulo", "${esc(titulo)}");
   editTextLayer(doc, "gancho", "${esc(gancho)}");
   editTextLayer(doc, "cta",    "${esc(cta)}");
 
-  // ── 3. Substituir foto ────────────────────────────────
+  // ── 5. Substituir foto ────────────────────────────────
   replaceFoto(doc, "${photoFwd}");
 
-  // ── 4. Garantir que camada-final esta visivel ─────────
-  // O Camera Raw do smart object aplica automaticamente na exportacao
-  var camadaFinal = findLayer(doc, "camada-final");
-  if (camadaFinal) camadaFinal.visible = true;
+  // ── 6. Stamp visible → nova camada achatada ───────────
+  // Seleciona camada do topo antes de stampar
+  app.activeDocument = doc;
+  doc.activeLayer = doc.layers[0];
+  var idMrgt = stringIDToTypeID("mergeVisible");
+  var descStamp = new ActionDescriptor();
+  descStamp.putBoolean(stringIDToTypeID("duplicate"), true);
+  executeAction(idMrgt, descStamp, DialogModes.NO);
+  var stampedLayer = doc.activeLayer;
+  appendLog("Stamp visible OK: " + stampedLayer.name);
 
-  // ── 5. Exportar como PNG ──────────────────────────────
+  // ── 7. Copiar conteudo do stamp ───────────────────────
+  doc.selection.selectAll();
+  doc.selection.copy();
+  doc.selection.deselect();
+
+  // Remover camada stamp (nao precisamos mais dela no doc)
+  stampedLayer.remove();
+
+  // ── 8. Colar dentro do objeto inteligente camada-final ─
+  if (camadaFinal) {
+    camadaFinal.visible = true;
+    doc.activeLayer = camadaFinal;
+    // Abrir smart object para edicao
+    executeAction(stringIDToTypeID("placedLayerEditContents"), new ActionDescriptor(), DialogModes.NO);
+    var soDoc = app.activeDocument;
+    appendLog("Smart object aberto: " + soDoc.name);
+
+    // Selecionar tudo e apagar conteudo antigo
+    soDoc.selection.selectAll();
+    soDoc.selection.clear();
+    soDoc.selection.deselect();
+
+    // Colar a arte nova
+    var idPst = charIDToTypeID("Pst ");
+    executeAction(idPst, new ActionDescriptor(), DialogModes.NO);
+
+    // Achatar e salvar o smart object
+    soDoc.flatten();
+    soDoc.close(SaveOptions.SAVECHANGES);
+    appendLog("Smart object salvo com nova arte");
+
+    // Voltar ao documento principal
+    app.activeDocument = doc;
+  }
+
+  // ── 9. Exportar como PNG com Camera Raw aplicado ──────
   var outFile    = new File("${outputPng}");
   var pngOptions = new PNGSaveOptions();
   pngOptions.compression = 3;
   pngOptions.interlaced  = false;
   doc.saveAs(outFile, pngOptions, true, Extension.LOWERCASE);
+  appendLog("PNG exportado: ${outputPng}");
 
-  // ── 9. Fechar sem salvar ──────────────────────────────
+  // ── 10. Fechar sem salvar ─────────────────────────────
   doc.close(SaveOptions.DONOTSAVECHANGES);
 
 } catch (e) {
