@@ -264,41 +264,7 @@ try {
   replaceFoto(doc, "${photoFwd}");
   app.refresh(); // forcar re-render da foto
 
-  // ── 6. Stamp visible → salvar como PNG temp ──────────
-  app.activeDocument = doc;
-  doc.activeLayer = doc.layers[0];
-  var idMrgt = stringIDToTypeID("mergeVisible");
-  var descStamp = new ActionDescriptor();
-  descStamp.putBoolean(stringIDToTypeID("duplicate"), true);
-  executeAction(idMrgt, descStamp, DialogModes.NO);
-  var stampedLayer = doc.activeLayer;
-  appendLog("Stamp visible OK: " + stampedLayer.name);
-
-  // Duplicar o doc com só essa camada e salvar como PNG temp
-  var stampPngPath = "C:/tilika-ps-server/temp/stamp_flat.png";
-  var stampDoc = doc.duplicate("stamp_temp", true);
-  // Achatar e exportar
-  stampDoc.flatten();
-  var stampPngOpts = new PNGSaveOptions();
-  stampPngOpts.compression = 0;
-  stampDoc.saveAs(new File(stampPngPath), stampPngOpts, true, Extension.LOWERCASE);
-  stampDoc.close(SaveOptions.DONOTSAVECHANGES);
-  appendLog("Stamp PNG salvo: " + stampPngPath);
-
-  // Remover camada stamp do doc original
-  stampedLayer.remove();
-
-  // ── 7. Substituir conteudo da camada-final via placedLayerReplaceContents ─
-  if (camadaFinal) {
-    camadaFinal.visible = true;
-    doc.activeLayer = camadaFinal;
-    var descReplace = new ActionDescriptor();
-    descReplace.putPath(charIDToTypeID("null"), new File(stampPngPath));
-    executeAction(stringIDToTypeID("placedLayerReplaceContents"), descReplace, DialogModes.NO);
-    appendLog("camada-final substituida com stamp PNG");
-  }
-
-  // ── 9. Exportar como PNG com Camera Raw aplicado ──────
+  // ── 6. Exportar PNG com camadas editadas (camada-final oculta) ──
   var outFile    = new File("${outputPng}");
   var pngOptions = new PNGSaveOptions();
   pngOptions.compression = 3;
