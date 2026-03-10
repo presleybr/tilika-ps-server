@@ -262,8 +262,7 @@ try {
   // ── 5. Substituir foto ────────────────────────────────
   replaceFoto(doc, "${photoFwd}");
 
-  // ── 6. Stamp visible → nova camada achatada ───────────
-  // Seleciona camada do topo antes de stampar
+  // ── 6. Stamp visible → salvar como PNG temp ──────────
   app.activeDocument = doc;
   doc.activeLayer = doc.layers[0];
   var idMrgt = stringIDToTypeID("mergeVisible");
@@ -273,39 +272,28 @@ try {
   var stampedLayer = doc.activeLayer;
   appendLog("Stamp visible OK: " + stampedLayer.name);
 
-  // ── 7. Copiar conteudo do stamp ───────────────────────
-  doc.selection.selectAll();
-  doc.selection.copy();
-  doc.selection.deselect();
+  // Duplicar o doc com só essa camada e salvar como PNG temp
+  var stampPngPath = "C:/tilika-ps-server/temp/stamp_flat.png";
+  var stampDoc = doc.duplicate("stamp_temp", true);
+  // Achatar e exportar
+  stampDoc.flatten();
+  var stampPngOpts = new PNGSaveOptions();
+  stampPngOpts.compression = 0;
+  stampDoc.saveAs(new File(stampPngPath), stampPngOpts, true, Extension.LOWERCASE);
+  stampDoc.close(SaveOptions.DONOTSAVECHANGES);
+  appendLog("Stamp PNG salvo: " + stampPngPath);
 
-  // Remover camada stamp (nao precisamos mais dela no doc)
+  // Remover camada stamp do doc original
   stampedLayer.remove();
 
-  // ── 8. Colar dentro do objeto inteligente camada-final ─
+  // ── 7. Substituir conteudo da camada-final via placedLayerReplaceContents ─
   if (camadaFinal) {
     camadaFinal.visible = true;
     doc.activeLayer = camadaFinal;
-    // Abrir smart object para edicao
-    executeAction(stringIDToTypeID("placedLayerEditContents"), new ActionDescriptor(), DialogModes.NO);
-    var soDoc = app.activeDocument;
-    appendLog("Smart object aberto: " + soDoc.name);
-
-    // Selecionar tudo e apagar conteudo antigo
-    soDoc.selection.selectAll();
-    soDoc.selection.clear();
-    soDoc.selection.deselect();
-
-    // Colar a arte nova
-    var idPst = charIDToTypeID("Pst ");
-    executeAction(idPst, new ActionDescriptor(), DialogModes.NO);
-
-    // Achatar e salvar o smart object
-    soDoc.flatten();
-    soDoc.close(SaveOptions.SAVECHANGES);
-    appendLog("Smart object salvo com nova arte");
-
-    // Voltar ao documento principal
-    app.activeDocument = doc;
+    var descReplace = new ActionDescriptor();
+    descReplace.putPath(charIDToTypeID("null"), new File(stampPngPath));
+    executeAction(stringIDToTypeID("placedLayerReplaceContents"), descReplace, DialogModes.NO);
+    appendLog("camada-final substituida com stamp PNG");
   }
 
   // ── 9. Exportar como PNG com Camera Raw aplicado ──────
