@@ -34,6 +34,58 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, psd: fs.existsSync(CONFIG.PSD_PATH) });
 });
 
+// ── LISTAR CAMADAS DO PSD (diagnóstico) ────────────────────
+app.get('/layers', async (req, res) => {
+  const jsxPath = CONFIG.PS_SCRIPT.replace('.jsx', '_layers.jsx');
+  const outPath = CONFIG.TEMP_DIR + '\\layers.json';
+
+  const jsx = `
+#target photoshop
+app.displayDialogs = DialogModes.NO;
+
+var result = [];
+
+function collectLayers(container, prefix) {
+  try {
+    var allLayers = container.layers;
+    for (var i = 0; i < allLayers.length; i++) {
+      var l = allLayers[i];
+      var info = {
+        name: l.name,
+        kind: l.kind ? l.kind.toString() : 'group',
+        path: prefix + l.name
+      };
+      result.push(info);
+      try { if (l.layers && l.layers.length > 0) collectLayers(l, prefix + l.name + '/'); } catch(e) {}
+    }
+  } catch(e) {}
+}
+
+var psdFile = new File("${CONFIG.PSD_PATH.replace(/\\/g, '/')}");
+var doc = app.open(psdFile);
+collectLayers(doc, '');
+doc.close(SaveOptions.DONOTSAVECHANGES);
+
+var outFile = new File("${outPath.replace(/\\/g, '/')}");
+outFile.open("w");
+outFile.write(JSON.stringify(result));
+outFile.close();
+`;
+
+  fs.writeFileSync(jsxPath, jsx, 'utf8');
+  const vbs = buildVBS(jsxPath);
+  const vbsPath = CONFIG.VBS_SCRIPT.replace('.vbs', '_layers.vbs');
+  fs.writeFileSync(vbsPath, vbs, 'utf8');
+
+  try {
+    await runScript(`cscript //NoLogo "${vbsPath}"`);
+    const layers = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+    res.json({ layers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── RENDER ─────────────────────────────────────────────────
 app.post('/render', async (req, res) => {
   const { titulo, gancho, cta, pilar, photoUrl } = req.body;
