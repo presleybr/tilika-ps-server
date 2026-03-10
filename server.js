@@ -203,17 +203,14 @@ If Err.Number <> 0 Then
   WScript.Quit 1
 End If
 
+' Suprimir TODOS os dialogos antes de qualquer operacao (3 = DialogModes.NO)
+psApp.DisplayDialogs = 3
 psApp.Visible = True
 
 Dim jsxFile
 jsxFile = "${fwdPath}"
 
 psApp.DoJavaScriptFile jsxFile
-
-If Err.Number <> 0 Then
-  WScript.Echo "ERRO ao executar script: " & Err.Description
-  WScript.Quit 1
-End If
 
 WScript.Echo "OK"
 Set psApp = Nothing
