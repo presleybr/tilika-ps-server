@@ -106,6 +106,28 @@ app.get('/errorlog', (req, res) => {
   }
 });
 
+// ── AUTO DEPLOY: git pull + reinicia o processo ────────────
+app.post('/deploy', (req, res) => {
+  console.log('[Deploy] Recebido pedido de deploy do Mac...');
+  res.json({ ok: true, msg: 'Pulling e reiniciando...' });
+
+  // Dar tempo pro response chegar antes de reiniciar
+  setTimeout(() => {
+    exec('git -C C:\\tilika-ps-server pull', (err, stdout, stderr) => {
+      console.log('[Deploy] git pull:', stdout || stderr);
+      // Spawn processo filho independente e sai — o SO reinicia o servidor
+      const { spawn } = require('child_process');
+      const child = spawn('node', ['server.js'], {
+        cwd: 'C:\\tilika-ps-server',
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+      setTimeout(() => process.exit(0), 500);
+    });
+  }, 500);
+});
+
 // ── RENDER ─────────────────────────────────────────────────
 app.post('/render', async (req, res) => {
   const { titulo, gancho, cta, pilar, photoUrl } = req.body;
