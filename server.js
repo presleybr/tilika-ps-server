@@ -86,6 +86,16 @@ outFile.close();
   }
 });
 
+// ── LER DEBUG DE CAMADAS ───────────────────────────────────
+app.get('/layerdebug', (req, res) => {
+  const f = CONFIG.TEMP_DIR + '\\layers_debug.txt';
+  if (fs.existsSync(f)) {
+    res.send(fs.readFileSync(f, 'utf8'));
+  } else {
+    res.send('Arquivo nao encontrado — rode um render primeiro');
+  }
+});
+
 // ── RENDER ─────────────────────────────────────────────────
 app.post('/render', async (req, res) => {
   const { titulo, gancho, cta, pilar, photoUrl } = req.body;
@@ -160,7 +170,26 @@ try {
   var doc = app.open(new File("${psdPath}"));
   app.activeDocument = doc;
 
-  // ── 2. Editar textos ───────────────────────────────────
+  // ── 2. Logar nomes das camadas pra debug ──────────────
+  var layerNames = [];
+  try {
+    for (var li = 0; li < doc.layers.length; li++) {
+      layerNames.push(doc.layers[li].name);
+      try {
+        if (doc.layers[li].layers) {
+          for (var lj = 0; lj < doc.layers[li].layers.length; lj++) {
+            layerNames.push("  " + doc.layers[li].layers[lj].name);
+          }
+        }
+      } catch(e) {}
+    }
+  } catch(e) {}
+  var dbgFile = new File("C:/tilika-ps-server/temp/layers_debug.txt");
+  dbgFile.open("w");
+  dbgFile.write(layerNames.join("\\n"));
+  dbgFile.close();
+
+  // ── 3. Editar textos ───────────────────────────────────
   editTextLayer(doc, "titulo", "${esc(titulo)}");
   editTextLayer(doc, "gancho", "${esc(gancho)}");
   editTextLayer(doc, "cta",    "${esc(cta)}");
