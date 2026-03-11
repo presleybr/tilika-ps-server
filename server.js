@@ -549,6 +549,125 @@ app.post('/clear-messages', (req, res) => {
   }
 });
 
+// ── TASK QUEUE: Mac envia tarefas, Windows executa automaticamente ──
+const tasks = [];
+
+// Mac cria uma task
+app.post('/task', (req, res) => {
+  const { cmd, label } = req.body;
+  if (!cmd) return res.status(400).json({ error: 'cmd obrigatorio' });
+  const task = { id: Date.now(), cmd, label: label || cmd.slice(0, 40), status: 'pending', result: null, createdAt: new Date().toISOString() };
+  tasks.push(task);
+  console.log(`[TASK] Nova task: ${task.label}`);
+  processNextTask();
+  res.json({ ok: true, taskId: task.id });
+});
+
+// Ver status das tasks
+app.get('/tasks', (req, res) => {
+  res.json({ tasks: tasks.slice(-20), total: tasks.length });
+});
+
+// Ver resultado de uma task
+app.get('/task/:id', (req, res) => {
+  const task = tasks.find(t => t.id === Number(req.params.id));
+  if (!task) return res.status(404).json({ error: 'Task nao encontrada' });
+  res.json(task);
+});
+
+let taskRunning = false;
+function processNextTask() {
+  if (taskRunning) return;
+  const pending = tasks.find(t => t.status === 'pending');
+  if (!pending) return;
+
+  taskRunning = true;
+  pending.status = 'running';
+  pending.startedAt = new Date().toISOString();
+  console.log(`[TASK] Executando: ${pending.cmd}`);
+
+  exec(pending.cmd, { timeout: 60000, cwd: __dirname }, (err, stdout, stderr) => {
+    pending.status = err ? 'error' : 'done';
+    pending.result = stdout || stderr || (err ? err.message : 'ok');
+    pending.finishedAt = new Date().toISOString();
+    console.log(`[TASK] ${pending.status}: ${pending.label} → ${pending.result.slice(0, 80)}`);
+
+    // Notifica Mac com o resultado
+    const resultMsg = `TASK ${pending.status.toUpperCase()}: ${pending.label}\n${pending.result.slice(0, 300)}`;
+    messages.toMac.push({ id: Date.now(), message: resultMsg, from: 'Windows Task Runner', timestamp: new Date().toISOString(), read: false });
+
+    taskRunning = false;
+    processNextTask(); // processa proxima
+  });
+}
+
+// ── AUTO-INIT: tunnel + PhantomBridge + notifica Mac ────────
+
+const PHANTOM_BRIDGE_URL = process.env.PHANTOM_BRIDGE_URL || '';
+const PHANTOM_TOKEN = process.env.PHANTOM_TOKEN || 'phantom-secret-2025';
+
+function autoStartTunnel() {
+  if (tunnelUrl) return;
+  console.log('[AUTO] Iniciando cloudflared tunnel...');
+
+  const logPath = path.join(__dirname, 'tunnel.log');
+  if (fs.existsSync(logPath)) fs.unlinkSync(logPath);
+
+  tunnelProcess = exec(`cloudflared tunnel --url http://localhost:4000 --logfile "${logPath}"`);
+  tunnelProcess.on('exit', () => { tunnelUrl = null; tunnelProcess = null; });
+
+  let attempts = 0;
+  const check = setInterval(() => {
+    attempts++;
+    if (fs.existsSync(logPath)) {
+      const log = fs.readFileSync(logPath, 'utf8');
+      const match = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/) ||
+                    log.match(/"(https:\/\/[^"]+trycloudflare[^"]+)"/);
+      if (match) {
+        tunnelUrl = match[1] || match[0];
+        clearInterval(check);
+        console.log('[AUTO] Tunnel ativa:', tunnelUrl);
+        registerWithPhantomBridge(tunnelUrl);
+        notifyMac(tunnelUrl);
+      }
+    }
+    if (attempts > 40) {
+      clearInterval(check);
+      console.log('[AUTO] Timeout aguardando tunnel - continuando sem ela');
+    }
+  }, 1500);
+}
+
+function registerWithPhantomBridge(url) {
+  if (!PHANTOM_BRIDGE_URL) {
+    console.log('[AUTO] PHANTOM_BRIDGE_URL nao configurado, pulando registro');
+    return;
+  }
+  const body = JSON.stringify({ url });
+  const parsed = new URL(PHANTOM_BRIDGE_URL);
+  const lib = parsed.protocol === 'https:' ? https : http;
+  const req = lib.request({
+    hostname: parsed.hostname,
+    port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+    path: '/register',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-bridge-token': PHANTOM_TOKEN, 'Content-Length': Buffer.byteLength(body) }
+  }, (res) => {
+    let data = '';
+    res.on('data', d => data += d);
+    res.on('end', () => console.log('[AUTO] PhantomBridge registrado:', data));
+  });
+  req.on('error', e => console.log('[AUTO] Erro PhantomBridge:', e.message));
+  req.write(body);
+  req.end();
+}
+
+function notifyMac(tunnelUrl) {
+  const msg = { message: `Windows online! Tunnel: ${tunnelUrl} | Photoshop: ${fs.existsSync(CONFIG.PSD_PATH)}`, from: 'Windows Server' };
+  messages.toMac.push({ id: Date.now(), ...msg, timestamp: new Date().toISOString(), read: false });
+  console.log('[AUTO] Notificou Mac via mensagem interna');
+}
+
 // ── START ───────────────────────────────────────────────────
 const PORT = 4000;
 app.listen(PORT, '0.0.0.0', () => {
@@ -558,4 +677,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(' PSD existe:', fs.existsSync(CONFIG.PSD_PATH));
   console.log(' Mac Files: http://192.168.48.133:4000/mac-files-list');
   console.log('==============================================');
+
+  // Auto-inicia tunnel 3s após subir (dá tempo do sistema estabilizar)
+  setTimeout(autoStartTunnel, 3000);
 });
