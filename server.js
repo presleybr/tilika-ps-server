@@ -436,6 +436,21 @@ function runScript(cmd) {
   });
 }
 
+// ── SERVIR ARQUIVOS MAC (privado entre vocês) ──────────────
+app.use('/mac-files', express.static(path.join(__dirname, 'mac-files')));
+
+// Rota especial para listar todos os arquivos disponíveis
+app.get('/mac-files-list', (req, res) => {
+  const macFilesDir = path.join(__dirname, 'mac-files');
+  const files = fs.readdirSync(macFilesDir);
+  const fileList = files.map(file => ({
+    name: file,
+    url: `http://192.168.48.133:4000/mac-files/${file}`,
+    size: fs.statSync(path.join(macFilesDir, file)).size
+  }));
+  res.json({ files: fileList, total: files.length });
+});
+
 // ── START ───────────────────────────────────────────────────
 const PORT = 4000;
 app.listen(PORT, '0.0.0.0', () => {
@@ -443,5 +458,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(' Tilika Photoshop Server rodando na porta', PORT);
   console.log(' PSD:', CONFIG.PSD_PATH);
   console.log(' PSD existe:', fs.existsSync(CONFIG.PSD_PATH));
+  console.log(' Mac Files: http://192.168.48.133:4000/mac-files-list');
   console.log('==============================================');
 });
