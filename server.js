@@ -436,6 +436,46 @@ function runScript(cmd) {
   });
 }
 
+// ── TUNNEL CLOUDFLARED (acesso externo) ─────────────────────
+let tunnelUrl = null;
+let tunnelProcess = null;
+
+app.post('/start-tunnel', (req, res) => {
+  if (tunnelUrl) return res.json({ ok: true, url: tunnelUrl, msg: 'Tunnel ja ativo' });
+
+  const logPath = path.join(__dirname, 'tunnel.log');
+  if (fs.existsSync(logPath)) fs.unlinkSync(logPath);
+
+  tunnelProcess = exec(`cloudflared tunnel --url http://localhost:4000 --logfile "${logPath}"`);
+  tunnelProcess.on('exit', () => { tunnelUrl = null; tunnelProcess = null; });
+
+  // Aguarda URL aparecer no log
+  let attempts = 0;
+  const check = setInterval(() => {
+    attempts++;
+    if (fs.existsSync(logPath)) {
+      const log = fs.readFileSync(logPath, 'utf8');
+      const match = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+      if (match) {
+        tunnelUrl = match[0];
+        clearInterval(check);
+        console.log('[TUNNEL] URL publica:', tunnelUrl);
+        return res.json({ ok: true, url: tunnelUrl });
+      }
+    }
+    if (attempts > 20) { clearInterval(check); res.status(500).json({ error: 'Timeout aguardando URL do tunnel' }); }
+  }, 1500);
+});
+
+app.get('/tunnel-url', (req, res) => {
+  res.json({ ok: !!tunnelUrl, url: tunnelUrl });
+});
+
+app.post('/stop-tunnel', (req, res) => {
+  if (tunnelProcess) { tunnelProcess.kill(); tunnelUrl = null; }
+  res.json({ ok: true, msg: 'Tunnel encerrado' });
+});
+
 // ── SERVIR ARQUIVOS MAC (privado entre vocês) ──────────────
 app.use('/mac-files', express.static(path.join(__dirname, 'mac-files')));
 
