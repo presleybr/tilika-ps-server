@@ -436,40 +436,77 @@ function runScript(cmd) {
   });
 }
 
-// ── SISTEMA DE MENSAGENS ENTRE CLAUDE CODES ─────────────────
-// Permite comunicação bidirecional Mac ↔ Windows entre Claude Code instances
+// ── SERVIR ARQUIVOS MAC (privado entre vocês) ──────────────
+app.use('/mac-files', express.static(path.join(__dirname, 'mac-files')));
 
-const messagesForMac = [];     // Fila: Windows → Mac
-const messagesForWindows = []; // Fila: Mac → Windows
+app.get('/mac-files-list', (req, res) => {
+  const macFilesDir = path.join(__dirname, 'mac-files');
+  const files = fs.readdirSync(macFilesDir);
+  const fileList = files.map(file => ({
+    name: file,
+    url: `http://192.168.48.133:4000/mac-files/${file}`,
+    size: fs.statSync(path.join(macFilesDir, file)).size
+  }));
+  res.json({ files: fileList, total: files.length });
+});
 
-// Windows envia mensagem pro Mac
-app.post('/messages-mac', (req, res) => {
+// ── SISTEMA DE MENSAGENS CLAUDE CODE Mac ↔ Windows ─────────
+const messages = {
+  toMac: [],      // Windows → Mac
+  toWindows: []   // Mac → Windows
+};
+
+// Windows envia pro Mac
+app.post('/send-to-mac', (req, res) => {
   const { message, from } = req.body;
-  if (!message) return res.status(400).json({ error: 'message obrigatório' });
+  if (!message) return res.status(400).json({ error: 'message obrigatorio' });
   const msg = { id: Date.now(), message, from: from || 'Claude Windows', timestamp: new Date().toISOString(), read: false };
-  messagesForMac.push(msg);
-  console.log(`[MSG→Mac] ${msg.from}: ${message}`);
-  res.json({ ok: true, id: msg.id });
+  messages.toMac.push(msg);
+  console.log(`[->Mac] ${msg.from}: ${message.slice(0, 60)}`);
+  res.json({ success: true, messageId: msg.id });
+});
+
+// Mac envia pro Windows
+app.post('/send-to-windows', (req, res) => {
+  const { message, from } = req.body;
+  if (!message) return res.status(400).json({ error: 'message obrigatorio' });
+  const msg = { id: Date.now(), message, from: from || 'Claude Mac', timestamp: new Date().toISOString(), read: false };
+  messages.toWindows.push(msg);
+  console.log(`[->Win] ${msg.from}: ${message.slice(0, 60)}`);
+  res.json({ success: true, messageId: msg.id });
 });
 
 // Mac lê mensagens do Windows
 app.get('/messages-mac', (req, res) => {
-  res.json({ messages: messagesForMac, total: messagesForMac.length, allMessages: messagesForMac.length });
-});
-
-// Mac envia mensagem pro Windows
-app.post('/messages-windows', (req, res) => {
-  const { message, from } = req.body;
-  if (!message) return res.status(400).json({ error: 'message obrigatório' });
-  const msg = { id: Date.now(), message, from: from || 'Claude Mac', timestamp: new Date().toISOString(), read: false };
-  messagesForWindows.push(msg);
-  console.log(`[MSG→Win] ${msg.from}: ${message}`);
-  res.json({ ok: true, id: msg.id });
+  res.json({ messages: messages.toMac, total: messages.toMac.length, allMessages: messages.toMac.length });
 });
 
 // Windows lê mensagens do Mac
-app.get('/messages-windows', (req, res) => {
-  res.json({ messages: messagesForWindows, total: messagesForWindows.length });
+app.get('/messages', (req, res) => {
+  res.json({ messages: messages.toWindows, total: messages.toWindows.length, allMessages: messages.toWindows.length });
+});
+
+// Marcar como lida
+app.post('/mark-read', (req, res) => {
+  const { messageId, target } = req.body;
+  const msgList = target === 'mac' ? messages.toMac : messages.toWindows;
+  const msg = msgList.find(m => m.id === messageId);
+  if (msg) { msg.read = true; res.json({ success: true }); }
+  else res.status(404).json({ error: 'Mensagem nao encontrada' });
+});
+
+// Limpar mensagens lidas
+app.post('/clear-messages', (req, res) => {
+  const { target } = req.body;
+  if (target === 'mac') {
+    const before = messages.toMac.length;
+    messages.toMac = messages.toMac.filter(m => !m.read);
+    res.json({ success: true, removed: before - messages.toMac.length });
+  } else {
+    const before = messages.toWindows.length;
+    messages.toWindows = messages.toWindows.filter(m => !m.read);
+    res.json({ success: true, removed: before - messages.toWindows.length });
+  }
 });
 
 // ── START ───────────────────────────────────────────────────
@@ -479,5 +516,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(' Tilika Photoshop Server rodando na porta', PORT);
   console.log(' PSD:', CONFIG.PSD_PATH);
   console.log(' PSD existe:', fs.existsSync(CONFIG.PSD_PATH));
+  console.log(' Mac Files: http://192.168.48.133:4000/mac-files-list');
   console.log('==============================================');
 });

@@ -1,0 +1,21 @@
+camada-final
+Retângulo 4
+cta
+Agrupar 2
+  Elipse 1 copiar
+  Elipse 1
+Camada 7
+PASSE PRO LADO
+  Camada 6
+  passe par a o lado
+titulo
+gancho
+Agrupar 1
+idosos
+idosos copiar
+Camada 5
+idosos
+Retângulo 1 copiar
+Retângulo 1
+foto
+background
