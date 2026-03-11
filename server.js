@@ -36,6 +36,34 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, psd: fs.existsSync(CONFIG.PSD_PATH) });
 });
 
+// ── ABRIR PSD SEM MODAL (DialogModes.NO via VBS) ────────────
+app.post('/open-psd', async (req, res) => {
+  const psdPath = req.body?.path || CONFIG.PSD_PATH;
+  const jsx = `
+#target photoshop
+app.displayDialogs = DialogModes.NO;
+var f = new File("${psdPath.replace(/\\/g, '/')}");
+if (f.exists) {
+  app.open(f);
+} else {
+  throw new Error("PSD nao encontrado: ${psdPath}");
+}
+`;
+  const jsxFile = CONFIG.PS_SCRIPT.replace('.jsx', '_open.jsx');
+  const vbsFile = CONFIG.VBS_SCRIPT.replace('.vbs', '_open.vbs');
+  try {
+    fs.writeFileSync(jsxFile, jsx);
+    fs.writeFileSync(vbsFile, buildVBS(jsxFile));
+    const { exec } = require('child_process');
+    exec(`cscript //NoLogo "${vbsFile}"`, { timeout: 30000 }, (err, stdout) => {
+      if (err && !stdout?.includes('OK')) return res.status(500).json({ error: err.message });
+      res.json({ ok: true, psd: psdPath, msg: 'PSD aberto sem modal' });
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── LISTAR CAMADAS DO PSD (diagnóstico) ────────────────────
 app.get('/layers', async (req, res) => {
   const jsxPath = CONFIG.PS_SCRIPT.replace('.jsx', '_layers.jsx');
