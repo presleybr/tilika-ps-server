@@ -455,7 +455,7 @@ app.post('/start-tunnel', (req, res) => {
     attempts++;
     if (fs.existsSync(logPath)) {
       const log = fs.readFileSync(logPath, 'utf8');
-      const match = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+      const match = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/) || log.match(/"(https:\/\/[^"]+trycloudflare[^"]+)"/);
       if (match) {
         tunnelUrl = match[0];
         clearInterval(check);
