@@ -436,6 +436,42 @@ function runScript(cmd) {
   });
 }
 
+// ── SISTEMA DE MENSAGENS ENTRE CLAUDE CODES ─────────────────
+// Permite comunicação bidirecional Mac ↔ Windows entre Claude Code instances
+
+const messagesForMac = [];     // Fila: Windows → Mac
+const messagesForWindows = []; // Fila: Mac → Windows
+
+// Windows envia mensagem pro Mac
+app.post('/messages-mac', (req, res) => {
+  const { message, from } = req.body;
+  if (!message) return res.status(400).json({ error: 'message obrigatório' });
+  const msg = { id: Date.now(), message, from: from || 'Claude Windows', timestamp: new Date().toISOString(), read: false };
+  messagesForMac.push(msg);
+  console.log(`[MSG→Mac] ${msg.from}: ${message}`);
+  res.json({ ok: true, id: msg.id });
+});
+
+// Mac lê mensagens do Windows
+app.get('/messages-mac', (req, res) => {
+  res.json({ messages: messagesForMac, total: messagesForMac.length, allMessages: messagesForMac.length });
+});
+
+// Mac envia mensagem pro Windows
+app.post('/messages-windows', (req, res) => {
+  const { message, from } = req.body;
+  if (!message) return res.status(400).json({ error: 'message obrigatório' });
+  const msg = { id: Date.now(), message, from: from || 'Claude Mac', timestamp: new Date().toISOString(), read: false };
+  messagesForWindows.push(msg);
+  console.log(`[MSG→Win] ${msg.from}: ${message}`);
+  res.json({ ok: true, id: msg.id });
+});
+
+// Windows lê mensagens do Mac
+app.get('/messages-windows', (req, res) => {
+  res.json({ messages: messagesForWindows, total: messagesForWindows.length });
+});
+
 // ── START ───────────────────────────────────────────────────
 const PORT = 4000;
 app.listen(PORT, '0.0.0.0', () => {
