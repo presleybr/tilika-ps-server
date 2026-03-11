@@ -451,6 +451,99 @@ app.get('/mac-files-list', (req, res) => {
   res.json({ files: fileList, total: files.length });
 });
 
+// ── SISTEMA DE MENSAGENS WINDOWS ↔ MAC ────────────────────
+const messages = {
+  toMac: [],      // Mensagens do Windows para o Mac
+  toWindows: []   // Mensagens do Mac para o Windows
+};
+
+// Enviar mensagem para o Mac
+app.post('/send-to-mac', (req, res) => {
+  const { message, from } = req.body;
+  if (!message) return res.status(400).json({ error: 'message é obrigatório' });
+
+  const msg = {
+    id: Date.now(),
+    message,
+    from: from || 'Windows',
+    timestamp: new Date().toISOString(),
+    read: false
+  };
+
+  messages.toMac.push(msg);
+  console.log(`[Mensagem para Mac] ${from || 'Windows'}: ${message.slice(0, 50)}...`);
+
+  res.json({ success: true, messageId: msg.id, total: messages.toMac.length });
+});
+
+// Enviar mensagem para o Windows
+app.post('/send-to-windows', (req, res) => {
+  const { message, from } = req.body;
+  if (!message) return res.status(400).json({ error: 'message é obrigatório' });
+
+  const msg = {
+    id: Date.now(),
+    message,
+    from: from || 'Mac',
+    timestamp: new Date().toISOString(),
+    read: false
+  };
+
+  messages.toWindows.push(msg);
+  console.log(`[Mensagem para Windows] ${from || 'Mac'}: ${message.slice(0, 50)}...`);
+
+  res.json({ success: true, messageId: msg.id, total: messages.toWindows.length });
+});
+
+// Receber mensagens do Mac (Windows lê)
+app.get('/messages', (req, res) => {
+  const unread = messages.toWindows.filter(m => !m.read);
+  res.json({
+    messages: unread,
+    total: unread.length,
+    allMessages: messages.toWindows.length
+  });
+});
+
+// Receber mensagens do Windows (Mac lê)
+app.get('/messages-mac', (req, res) => {
+  const unread = messages.toMac.filter(m => !m.read);
+  res.json({
+    messages: unread,
+    total: unread.length,
+    allMessages: messages.toMac.length
+  });
+});
+
+// Marcar mensagem como lida
+app.post('/mark-read', (req, res) => {
+  const { messageId, target } = req.body;
+  const msgList = target === 'mac' ? messages.toMac : messages.toWindows;
+  const msg = msgList.find(m => m.id === messageId);
+
+  if (msg) {
+    msg.read = true;
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Mensagem não encontrada' });
+  }
+});
+
+// Limpar mensagens lidas
+app.post('/clear-messages', (req, res) => {
+  const { target } = req.body;
+
+  if (target === 'mac') {
+    const before = messages.toMac.length;
+    messages.toMac = messages.toMac.filter(m => !m.read);
+    res.json({ success: true, removed: before - messages.toMac.length });
+  } else {
+    const before = messages.toWindows.length;
+    messages.toWindows = messages.toWindows.filter(m => !m.read);
+    res.json({ success: true, removed: before - messages.toWindows.length });
+  }
+});
+
 // ── START ───────────────────────────────────────────────────
 const PORT = 4000;
 app.listen(PORT, '0.0.0.0', () => {
