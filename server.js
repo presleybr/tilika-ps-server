@@ -504,6 +504,38 @@ app.post('/stop-tunnel', (req, res) => {
   res.json({ ok: true, msg: 'Tunnel encerrado' });
 });
 
+// ── WINDOWS MAP — resultado do mapeamento completo ──────────
+const MAP_DIR = 'C:\\tilika-ps-server\\windows-map';
+
+app.get('/windows-map', (req, res) => {
+  if (!fs.existsSync(MAP_DIR)) return res.json({ ok: false, msg: 'Mapeamento ainda nao executado. POST /windows-map/start' });
+  const files = fs.readdirSync(MAP_DIR).map(f => ({
+    file: f,
+    url: `/windows-map/${f}`,
+    size: fs.statSync(path.join(MAP_DIR, f)).size
+  }));
+  const summary = files.find(f => f.file === '00-RESUMO.json');
+  const summaryData = summary ? JSON.parse(fs.readFileSync(path.join(MAP_DIR, '00-RESUMO.json'), 'utf8')) : null;
+  res.json({ ok: true, files, summary: summaryData });
+});
+
+app.get('/windows-map/:file', (req, res) => {
+  const filePath = path.join(MAP_DIR, req.params.file.replace(/\.\./g, ''));
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Arquivo nao encontrado' });
+  res.sendFile(filePath);
+});
+
+app.post('/windows-map/start', requireToken, (req, res) => {
+  const scriptSrc = path.join(__dirname, 'map-windows.ps1');
+  if (!fs.existsSync(scriptSrc)) return res.status(404).json({ error: 'Script map-windows.ps1 nao encontrado' });
+  res.json({ ok: true, msg: 'Mapeamento iniciado em background. Consulte GET /windows-map para ver progresso.' });
+  // Roda em background sem bloquear
+  exec(`powershell.exe -ExecutionPolicy Bypass -File "${scriptSrc}"`, { timeout: 300000 }, (err, stdout) => {
+    console.log('[MAP] Mapeamento concluido:', err ? err.message : 'OK');
+    console.log('[MAP]', stdout?.slice(0, 200));
+  });
+});
+
 // ── SERVIR ARQUIVOS MAC (privado entre vocês) ──────────────
 app.use('/mac-files', express.static(path.join(__dirname, 'mac-files')));
 
